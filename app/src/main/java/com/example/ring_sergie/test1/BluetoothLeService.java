@@ -2,11 +2,14 @@ package com.example.ring_sergie.test1;
 
 import android.app.Service;
 import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothGatt;
 import android.bluetooth.BluetoothGattCallback;
 import android.bluetooth.BluetoothGattCharacteristic;
+import android.bluetooth.BluetoothGattService;
 import android.bluetooth.BluetoothManager;
 import android.bluetooth.BluetoothProfile;
+import android.content.Context;
 import android.content.Intent;
 import android.os.Build;
 import android.os.IBinder;
@@ -14,11 +17,8 @@ import android.support.annotation.Nullable;
 import android.support.annotation.RequiresApi;
 import android.util.Log;
 
+import java.util.List;
 import java.util.UUID;
-
-/**
- * Created by ring-sergie on 8/23/17.
- */
 
 // A service that interacts with the BLE device via the Android BLE API.
 @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
@@ -30,6 +30,7 @@ public class BluetoothLeService extends Service {
     private String mBluetoothDeviceAddress;
     private BluetoothGatt mBluetoothGatt;
     private int mConnectionState = STATE_DISCONNECTED;
+    private Context mContext = null;
 
     private static final int STATE_DISCONNECTED = 0;
     private static final int STATE_CONNECTING = 1;
@@ -49,12 +50,57 @@ public class BluetoothLeService extends Service {
     public final static UUID UUID_HEART_RATE_MEASUREMENT =
             UUID.fromString(SampleGattAttributes.HEART_RATE_MEASUREMENT);
 
-    private void broadcastUpdate(final String action) {
-        final Intent intent = new Intent(action);
-        sendBroadcast(intent);
-    }
+    // Various callback methods defined by the BLE API.
+    private final BluetoothGattCallback mGattCallback =
+            new BluetoothGattCallback() {
+                @Override
+                public void onConnectionStateChange(BluetoothGatt gatt, int status,
+                                                    int newState) {
+                    String intentAction;
+                    if (newState == BluetoothProfile.STATE_CONNECTED) {
+                        intentAction = ACTION_GATT_CONNECTED;
+                        mConnectionState = STATE_CONNECTED;
+                        broadcastUpdate(intentAction);
+                        Log.i(TAG, "Connected to GATT server.");
+                        Log.i(TAG, "Attempting to start service discovery:" +
+                                mBluetoothGatt.discoverServices());
 
-    public void sendBroadcast(Intent intent) {
+                    } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                        intentAction = ACTION_GATT_DISCONNECTED;
+                        mConnectionState = STATE_DISCONNECTED;
+                        Log.i(TAG, "Disconnected from GATT server.");
+                        broadcastUpdate(intentAction);
+                    }
+                }
+
+                @Override
+                // New services discovered
+                public void onServicesDiscovered(BluetoothGatt gatt, int status) {
+                    Log.w(TAG, "onServicesDiscovered received: " + status);
+                    if (status == BluetoothGatt.GATT_SUCCESS) {
+                        broadcastUpdate(ACTION_GATT_SERVICES_DISCOVERED);
+                    }
+                }
+
+                @Override
+                // Result of a characteristic read operation
+                public void onCharacteristicRead(BluetoothGatt gatt,
+                                                 BluetoothGattCharacteristic characteristic,
+                                                 int status) {
+                    if (status == BluetoothGatt.GATT_SUCCESS) {
+                        broadcastUpdate(ACTION_DATA_AVAILABLE, characteristic);
+                    }
+                }
+            };
+
+    private void broadcastUpdate(final String action) {
+        if (mContext != null) {
+            final Intent intent = new Intent(action);
+            Log.d(TAG, "broadcastUpdate sending " + action);
+            mContext.sendBroadcast(intent);
+        }
+        else
+            Log.d(TAG, "broadcastUpdate mContext == null!");
     }
 
     private void broadcastUpdate(final String action,
@@ -87,57 +133,33 @@ public class BluetoothLeService extends Service {
                         stringBuilder.toString());
             }
         }
-        sendBroadcast(intent);
-    }
-    // Various callback methods defined by the BLE API.
-    private final BluetoothGattCallback mGattCallback;
-    {
-        mGattCallback = new BluetoothGattCallback() {
-            @Override
-            public void onConnectionStateChange(BluetoothGatt gatt, int status,
-                                                int newState) {
-                String intentAction;
-                if (newState == BluetoothProfile.STATE_CONNECTED) {
-                    intentAction = ACTION_GATT_CONNECTED;
-                    mConnectionState = STATE_CONNECTED;
-                    broadcastUpdate(intentAction);
-                    Log.i(TAG, "Connected to GATT server.");
-                    Log.i(TAG, "Attempting to start service discovery:" +
-                            mBluetoothGatt.discoverServices());
-
-                } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
-                    intentAction = ACTION_GATT_DISCONNECTED;
-                    mConnectionState = STATE_DISCONNECTED;
-                    Log.i(TAG, "Disconnected from GATT server.");
-                    broadcastUpdate(intentAction);
-                }
-            }
-
-            @Override
-            // New services discovered
-            public void onServicesDiscovered(BluetoothGatt gatt, int status) {
-                if (status == BluetoothGatt.GATT_SUCCESS) {
-                    broadcastUpdate(ACTION_GATT_SERVICES_DISCOVERED);
-                } else {
-                    Log.w(TAG, "onServicesDiscovered received: " + status);
-                }
-            }
-
-            @Override
-            // Result of a characteristic read operation
-            public void onCharacteristicRead(BluetoothGatt gatt,
-                                             BluetoothGattCharacteristic characteristic,
-                                             int status) {
-                if (status == BluetoothGatt.GATT_SUCCESS) {
-                    broadcastUpdate(ACTION_DATA_AVAILABLE, characteristic);
-                }
-            }
-        };
+        if (mContext != null) mContext.sendBroadcast(intent);
     }
 
     @Nullable
     @Override
     public IBinder onBind(Intent intent) {
         return null;
+    }
+
+
+    // additional heler functions
+    public void BluetoothGatt_close() {
+        if (mBluetoothGatt != null)
+        {
+            mBluetoothGatt.close();
+            mBluetoothGatt = null;
+        }
+    }
+
+    public void BluetoothGatt_connectGatt(BluetoothDevice device, Context ctx, boolean autoconnect)
+    {
+        mContext = ctx;
+        mBluetoothGatt = device.connectGatt(mContext, autoconnect, mGattCallback);
+    }
+
+    public List<BluetoothGattService> BluetoothGatt_getServices()
+    {
+        return mBluetoothGatt.getServices();
     }
 }
