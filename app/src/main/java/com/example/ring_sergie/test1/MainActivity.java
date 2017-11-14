@@ -40,6 +40,9 @@ import android.widget.ExpandableListView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import org.json.JSONException;
+import org.json.JSONObject;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -79,6 +82,7 @@ public class MainActivity extends AppCompatActivity {
     int mBLEDeviceIndex = 0;
 
     List<String> mCharacteristics;
+    Boolean mbInteractiveReadOnce; // vs. batch-mode pairing simulation
 
     // Defines several constants used when transmitting messages between the
     // service and the UI.
@@ -314,6 +318,7 @@ public class MainActivity extends AppCompatActivity {
         Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
 
+        mbInteractiveReadOnce = false;
         FloatingActionButton fab = (FloatingActionButton) findViewById(R.id.fab);
         fab.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -404,6 +409,8 @@ public class MainActivity extends AppCompatActivity {
                         public void onClick(DialogInterface dialog, int choice) {
                             switch (choice) {
                                 case DialogInterface.BUTTON_POSITIVE:
+                                    // TODO: check properties W R - maybe to write vs. to read
+                                    mbInteractiveReadOnce = true;
                                     readCharacteristicByUUID(uuid);
                                     break;
 
@@ -694,8 +701,10 @@ public class MainActivity extends AppCompatActivity {
                     wr += "WRITE";
                 }
                 debugout("characteristic: " + uuid_human + " " + uuid + " " + wr);
-                String ch = uuid_human + " " + wr+ " UUID:" + uuid;
-                mCharacteristics.add(ch);
+                if (!unknownCharaString.equals(uuid_human)) {
+                    String ch = uuid_human + " " + wr + " UUID:" + uuid;
+                    mCharacteristics.add(ch);
+                }
 
                 if (uuid_human.contains(SampleGattAttributes.SET_PUBLIC_KEY)) {
                     writeCharacteristicValue("this IS long CHARACTERISTIC written to SET_PUBLIC_KEY", SampleGattAttributes.SET_PUBLIC_KEY, gattCharacteristic);
@@ -806,6 +815,22 @@ public class MainActivity extends AppCompatActivity {
         return true;
     }
 
+    private String NetworktoJSON(String ssid, String pass){
+
+        JSONObject jsonObject= new JSONObject();
+        try {
+            jsonObject.put("ssid", ssid);
+            jsonObject.put("pass", pass);
+
+            return jsonObject.toString();
+        } catch (JSONException e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+            return "";
+        }
+
+    }
+
     @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
     private void HandleReadNotify(String aStr)
     {
@@ -818,7 +843,11 @@ public class MainActivity extends AppCompatActivity {
         BluetoothGattCharacteristic gattCharacteristic;
         debugout(aStr);
         Log.d(TAG, "---------------------[" + aStr + "]------------------");
-        if (aStr.contains("att:GET_PAIRING_STATE")) {
+
+        if (mbInteractiveReadOnce)
+            mbInteractiveReadOnce = false; // just display it
+
+        else if (aStr.contains("att:GET_PAIRING_STATE")) {
             if (aStr.contains("val:PAYLOAD_READY")) {
                 findAndReadCharacteristic("PAYLOAD_READ", SampleGattAttributes.GET_PUBLIC_PAYLOAD);
             }
@@ -847,11 +876,10 @@ public class MainActivity extends AppCompatActivity {
 
             boolean started = false;
             // let's assume the SSID and PASSWORD selected
-            if (findAndWriteCharacteristic("on GET_NETWORKS", SampleGattAttributes.SET_SSID_WIFI, "Timbres"))
-                if (findAndWriteCharacteristic("on GET_NETWORKS", SampleGattAttributes.SET_PASSWORD, "Parola d'ordine"))
-                    if (findAndWriteCharacteristic("on GET_NETWORKS", SampleGattAttributes.SET_PAIRING_START, "Es ist Zeit!"))
-                        started = true;
-            if (!started)
+            String network_credentials = NetworktoJSON("Doorbells", "Parola d'ordine");
+            debugout("sending " + network_credentials);
+
+            if (!findAndWriteCharacteristic("on GET_NETWORKS", SampleGattAttributes.SET_NETWORK, network_credentials))
             {
                 debugout("oops.. something went wrong...abort and restart");
                 disconnectAndRelease();
