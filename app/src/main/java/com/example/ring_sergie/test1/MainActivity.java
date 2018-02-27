@@ -1,5 +1,6 @@
 package com.example.ring_sergie.test1;
 
+import android.app.Application;
 import android.text.method.ScrollingMovementMethod;
 import android.Manifest;
 import android.app.Notification;
@@ -47,7 +48,10 @@ import org.json.JSONObject;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.UUID;
@@ -283,7 +287,7 @@ public class MainActivity extends AppCompatActivity {
                     mScanBTResultList.add(text);
             }
 
-            if (!bFound && (deviceName.contains("Ring-7E01"))) {
+            if (!bFound && (deviceName.contains("RingTEST"))) {
                 bFound = true;
                 mDevice = device;
                 mButton.setText("Connect");
@@ -329,6 +333,12 @@ public class MainActivity extends AppCompatActivity {
                         .setAction("Action", null).show();
             }
         });
+
+        SimpleDateFormat df = new SimpleDateFormat("MM-dd-yy HH:mm:ss");
+        String formattedDate = df.format(Calendar.getInstance().getTime());
+        String new_title = (String) getTitle() + " " + formattedDate;
+        setTitle(new_title);
+
         mButton = (Button) findViewById(R.id.button1);
 
         scrollDisplay = (TextView) findViewById(R.id.text_view_id);
@@ -599,6 +609,15 @@ public class MainActivity extends AppCompatActivity {
                 scan_discover(START_SCAN);
             }
         }
+        else if (mBLEConnected && mButton.getText().equals("Discover"))
+        {
+            mButton.setText("Discovering...");
+            mBleService.BluetoothGatt_discoverServices();
+        }
+        else if (mBLEConnected && mButton.getText().equals("Disconnect")) {
+            mButton.setText("Connect");
+            disconnectAndRelease();
+        }
         else
         {
             debugout("trying to connect " + mDevice.getAddress() + "\r\n" + msUUID);
@@ -669,7 +688,7 @@ public class MainActivity extends AppCompatActivity {
         mCharacteristics.clear();
         listDataChild.put(listDataHeader.get(1), mScanLEResultList);
 
-        debugout("Loops through available GATT Services.");
+        debugout("Loops through available " + gattServices.size() + " GATT Services.");
         // Loops through available GATT Services.
         for (BluetoothGattService gattService : gattServices) {
             HashMap<String, String> currentServiceData = new HashMap<String, String>();
@@ -680,11 +699,11 @@ public class MainActivity extends AppCompatActivity {
             currentServiceData.put(LIST_UUID, uuid);
             gattServiceData.add(currentServiceData);
 
-            debugout("service: " + uuid + " type " + gattService.getType());
-
             ArrayList<HashMap<String, String>> gattCharacteristicGroupData = new ArrayList<HashMap<String, String>>();
             List<BluetoothGattCharacteristic> gattCharacteristics = gattService.getCharacteristics();
             ArrayList<BluetoothGattCharacteristic> charas = new ArrayList<BluetoothGattCharacteristic>();
+
+            debugout("service: " + uuid + " type " + gattService.getType() + " attr: " + gattCharacteristics.size());
 
             // Loops through available Characteristics.
             for (BluetoothGattCharacteristic gattCharacteristic : gattCharacteristics) {
@@ -708,25 +727,22 @@ public class MainActivity extends AppCompatActivity {
                     wr += "WRITE";
                 }
                 debugout("characteristic: " + uuid_human + " " + uuid + " " + wr);
+
+                String ch = uuid_human + " " + wr + " UUID:" + uuid;
+                mCharacteristics.add(ch);
+
                 if (!unknownCharaString.equals(uuid_human)) {
-                    String ch = uuid_human + " " + wr + " UUID:" + uuid;
-                    mCharacteristics.add(ch);
+                    // request for notifications
+                    mBleService.BluetoothGatt_setNotify(gattCharacteristic);
                 }
 
                 if (uuid_human.contains(SampleGattAttributes.SET_PUBLIC_KEY)) {
                     writeCharacteristicValue("this IS long CHARACTERISTIC written to SET_PUBLIC_KEY", SampleGattAttributes.SET_PUBLIC_KEY, gattCharacteristic);
                 }
-                // request for notifications
-                mBleService.BluetoothGatt_setNotify(gattCharacteristic);
-
             }
             mGattCharacteristics.add(charas);
             gattCharacteristicData.add(gattCharacteristicGroupData);
         }
-        // listDataChild.put(listDataHeader.get(2), mCharacteristics);
-
-        // don't disconnect yet - it may sending packages still
-        // disconnectAndRelease();
     }
 
     @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
@@ -918,6 +934,7 @@ public class MainActivity extends AppCompatActivity {
 // ACTION_GATT_SERVICES_DISCOVERED: discovered GATT services.
 // ACTION_DATA_AVAILABLE: received data from the device. This can be a
 // result of read or notification operations.
+
     private final BroadcastReceiver mGattUpdateReceiver = new BroadcastReceiver() {
         @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
         @Override
@@ -926,15 +943,19 @@ public class MainActivity extends AppCompatActivity {
             debugout("mGattUpdateReceiver: " + action.toString(), false);
             if (BluetoothLeService.ACTION_GATT_CONNECTED.equals(action)) {
                 mBLEConnected = true;
+                Log.i(TAG, "MainAct informed Connected to GATT server.");
+                mButton.setText("Discover");
+                //Log.i(TAG, "Attempting to start service discovery:" + mBleService.BluetoothGatt_discoverServices());
                 invalidateOptionsMenu();
             } else if (BluetoothLeService.ACTION_GATT_DISCONNECTED.equals(action)) {
                 mBLEConnected = false;
                 invalidateOptionsMenu();
                 // clearUI();
             } else if (BluetoothLeService.ACTION_GATT_SERVICES_DISCOVERED.equals(action)) {
-                debugout("trying to send data....");
+                // debugout("trying to send data....");
                 // Show all the supported services and characteristics on the user interface.
                 displayGattServices(mBleService.BluetoothGatt_getServices());
+                mButton.setText("Disconnect");
             } else if (BluetoothLeService.ACTION_DATA_AVAILABLE.equals(action)) {
                 HandleReadNotify(intent.getStringExtra(BluetoothLeService.EXTRA_DATA));
             }
