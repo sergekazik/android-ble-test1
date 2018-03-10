@@ -156,18 +156,18 @@ public class BluetoothLeService extends Service {
 
     public boolean BluetoothGatt_discoverServices() {
         // refreshDeviceCache(mBluetoothGatt);
-        try {
-            Method localMethod = mBluetoothGatt.getClass().getMethod("refresh", new Class[0]);
-            if (localMethod != null) {
-                Log.d(TAG, "...refreshing device");
-                localMethod.invoke(mBluetoothGatt, new Object[0]);
-            }
-            else
-                Log.e(TAG, "---Failed to refresh device");
-        }
-        catch (Exception localException) {
-            Log.e(TAG, "An exception occured while refreshing device");
-        }
+//        try {
+//            Method localMethod = mBluetoothGatt.getClass().getMethod("refresh", new Class[0]);
+//            if (localMethod != null) {
+//                Log.d(TAG, "...refreshing device");
+//                localMethod.invoke(mBluetoothGatt, new Object[0]);
+//            }
+//            else
+//                Log.e(TAG, "---Failed to refresh device");
+//        }
+//        catch (Exception localException) {
+//            Log.e(TAG, "An exception occured while refreshing device");
+//        }
 
         return mBluetoothGatt.discoverServices();
     }
@@ -186,7 +186,7 @@ public class BluetoothLeService extends Service {
     {
         final int TRANSPORT_LE = 2;
         mContext = ctx;
-        mBluetoothGatt = device.connectGatt(mContext, autoconnect, mGattCallback, TRANSPORT_LE);
+        mBluetoothGatt = device.connectGatt(mContext, autoconnect, mGattCallback); // , TRANSPORT_LE);
     }
 
     public List<BluetoothGattService> BluetoothGatt_getServices()

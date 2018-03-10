@@ -48,12 +48,14 @@ import org.json.JSONObject;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.lang.reflect.Method;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 public class MainActivity extends AppCompatActivity {
@@ -287,7 +289,11 @@ public class MainActivity extends AppCompatActivity {
                     mScanBTResultList.add(text);
             }
 
-            if (!bFound && (deviceName.contains("RingTEST"))) {
+            if (!bFound &&
+                    (deviceName.contains("RingTEST") ||
+                    deviceName.contains("koko") ||
+                    deviceName.contains("Ambarella") ))
+            {
                 bFound = true;
                 mDevice = device;
                 mButton.setText("Connect");
@@ -317,6 +323,11 @@ public class MainActivity extends AppCompatActivity {
             Log.d(TAG, "gattCharacteristic " + uuid+ " not found... abort.");
     }
 
+    public List<BluetoothDevice> getConnectedDevices() {
+        BluetoothManager btManager = (BluetoothManager)getSystemService(BLUETOOTH_SERVICE);
+        return btManager.getConnectedDevices(BluetoothProfile.GATT);
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -329,8 +340,33 @@ public class MainActivity extends AppCompatActivity {
         fab.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                Snackbar.make(view, "Replace with your own action", Snackbar.LENGTH_LONG)
+                Snackbar.make(view, "Getting conn. & paired devs", Snackbar.LENGTH_LONG)
                         .setAction("Action", null).show();
+
+                List<BluetoothDevice> btdevices = getConnectedDevices();
+                Log.d(TAG, "found " + btdevices.size() + " connected devices");
+                for(int i=0; i<btdevices.size(); i++)
+                {
+                    //match your device here
+                    Log.d(TAG, "connected devices:" + " BLE Name:"+btdevices.get(i).getName());
+                }
+
+                Set<BluetoothDevice> pairedDevices = mBluetoothAdapter.getBondedDevices();
+                if (pairedDevices.size() > 0) {
+                    for (BluetoothDevice device : pairedDevices) {
+                        Log.d("paired devices:"," BLE Name:"+device.getName());
+                        try {
+                            if(device.getName().contains("koko")){
+                                Method m = device.getClass()
+                                        .getMethod("removeBond", (Class[]) null);
+                                m.invoke(device, (Object[]) null);
+                            }
+                        } catch (Exception e) {
+                            Log.e("fail", e.getMessage());
+                        }
+                    }
+                }
+
             }
         });
 
@@ -514,10 +550,7 @@ public class MainActivity extends AppCompatActivity {
         super.onDestroy();
 
         scan_discover(STOP_SCAN);
-
-        if (mBleService != null ) {
-            mBleService.BluetoothGatt_close();
-        }
+        disconnectAndRelease();
         // Don't forget to unregister the ACTION_FOUND receiver.
         unregisterReceiver(mReceiver);
     }
@@ -622,6 +655,7 @@ public class MainActivity extends AppCompatActivity {
         {
             debugout("trying to connect " + mDevice.getAddress() + "\r\n" + msUUID);
             if (mDevice != null) {
+                mButton.setText("connecting...");
                 if (mBLEscanCheckBox.isChecked()) {
                     mBleService = new BluetoothLeService();
                     mBleService.BluetoothGatt_connectGatt(mDevice, this, false);
@@ -945,10 +979,13 @@ public class MainActivity extends AppCompatActivity {
                 mBLEConnected = true;
                 Log.i(TAG, "MainAct informed Connected to GATT server.");
                 mButton.setText("Discover");
-                //Log.i(TAG, "Attempting to start service discovery:" + mBleService.BluetoothGatt_discoverServices());
+                // mButton.setText("discovering...");
+                // boolean ret = mBleService.BluetoothGatt_discoverServices();
+                // Log.i(TAG, "Attempting to start service discovery:" + ret);
                 invalidateOptionsMenu();
             } else if (BluetoothLeService.ACTION_GATT_DISCONNECTED.equals(action)) {
                 mBLEConnected = false;
+                mButton.setText("Connect");
                 invalidateOptionsMenu();
                 // clearUI();
             } else if (BluetoothLeService.ACTION_GATT_SERVICES_DISCOVERED.equals(action)) {
@@ -964,3 +1001,17 @@ public class MainActivity extends AppCompatActivity {
 }
 
 
+/*
+Querying paired devices
+Before performing device discovery, it's worth querying the set of paired devices to see if the desired device is already known. To do so, call getBondedDevices(). This returns a set of BluetoothDevice objects representing paired devices. For example, you can query all paired devices and get the name and MAC address of each device, as the following code snippet demonstrates:
+
+Set<BluetoothDevice> pairedDevices = mBluetoothAdapter.getBondedDevices();
+
+if (pairedDevices.size() > 0) {
+    // There are paired devices. Get the name and address of each paired device.
+    for (BluetoothDevice device : pairedDevices) {
+        String deviceName = device.getName();
+        String deviceHardwareAddress = device.getAddress(); // MAC address
+    }
+}
+ */
